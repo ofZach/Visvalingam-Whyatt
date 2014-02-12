@@ -2,6 +2,29 @@
 
 
 
+using namespace std;
+
+
+
+
+class triangle {
+public:
+    int indices[3];
+    float area;
+    triangle * prev;
+    triangle * next;
+};
+
+bool compareTri ( triangle * i, triangle * j){
+    
+    // important note here:
+    // http://stackoverflow.com/questions/12290479/stdsort-fails-on-stdvector-of-pointers
+    
+    if (i->area != j->area) return i->area < j->area;
+    else return false;
+
+}
+
 //--------------------------------------------------------------
 inline float triArea(ofPoint d0, ofPoint d1, ofPoint d2)
 {
@@ -9,59 +32,93 @@ inline float triArea(ofPoint d0, ofPoint d1, ofPoint d2)
     return (dArea > 0.0) ? dArea : -dArea;
 }
 
-
-//--------------------------------------------------------------
-typedef struct {
-    int index;
-    ofPoint pos;
-} pointWindex;
-
 //--------------------------------------------------------------
 void testApp::calcSimplificaiton( ofPolyline & lineToSimplify, vector < ofPoint > & results){
 
+   
+    results = lineToSimplify.getVertices();
     
-    // this function takes a polyline as input and results a point array where z values = importance of the point.
-    
-    // note: there's likely some optimizations to be made here since I'm doing alot of repetitive triangle area calculations.
-    // a smarter approach would know which triangles to reclculate or use a min heap, etc.
-    
-    // clear the results:
-    
-    results.clear();
-    
-    // create a data store that we will remove from.  we need to know the original index of a point
-    // to know how to update the results vector, so store index and pos together:
-    
-    vector < pointWindex > indices;
     
     int total = lineToSimplify.size();
     
-    // setup initial data structures:
-    for (int i = 0; i < lineToSimplify.size(); i++){
-        pointWindex temp;
-        temp.index = i;
-        temp.pos = lineToSimplify[i];
-        indices.push_back(temp);
-        results.push_back(temp.pos);
+    
+    // if we have 100 points, we have 98 triangles to look at
+    int nTriangles = total - 2;
+    
+
+    triangle * triangles[ nTriangles ];
+    
+    for (int i = 1; i < total-1; i++){
+        triangle * tempTri = new triangle();
+        tempTri->indices[0] = i-1;
+        tempTri->indices[1] = i;
+        tempTri->indices[2] = i+1;
+        tempTri->area = triArea(        lineToSimplify[tempTri->indices[0]],
+                                        lineToSimplify[tempTri->indices[1]],
+                                        lineToSimplify[tempTri->indices[2]]);
+        triangles[i-1] = tempTri;
     }
     
-    // now let's, in a while loop, go through, find a smallest triangle, record it, delete it and keep going
+    // set the next and prev triangles, use NULL on either end. this helps us update traingles that might need to be removed
+    for (int i = 0; i < nTriangles; i++){
+        triangles[i]->prev = (i == 0 ? NULL : triangles[i-1]);
+        triangles[i]->next = (i == nTriangles-1 ? NULL : triangles[i+1]);
+    }
+    
+    std::vector<triangle*> trianglesVec;
+ 
+    for (int i = 0; i < nTriangles; i++){
+        trianglesVec.push_back(triangles[i]);
+    }
+    
+    
     
     int count = 0;
-    while (indices.size() > 2){
-        float minArea = 1000000;
-        float minIndex = -1;
-        for (int i = 1; i < indices.size()-1; i++){
-            float area = triArea( indices[i-1].pos, indices[i].pos, indices[i+1].pos);
-            if (area < minArea){
-                minArea = area;
-                minIndex = i;
-            }
+    while ( !trianglesVec.empty()){
+        
+      
+        
+        ofSort(trianglesVec,compareTri);
+        
+        triangle * tri = trianglesVec[0];
+        
+        results[tri->indices[1]].z = total - count;         // store the "importance" of this point in numerical order of removal (but inverted, so 0 = most improtant, n = least important.  end points are 0. 
+        count ++;
+        
+        
+        if (tri->prev != NULL){
+            tri->prev->next = tri->next;
+            tri->prev->indices[2] = tri->indices[2];  // check!
+            
+            tri->prev->area = triArea(      lineToSimplify[tri->prev->indices[0]],
+                                            lineToSimplify[tri->prev->indices[1]],
+                                            lineToSimplify[tri->prev->indices[2]]);
+
         }
-        results[ indices[minIndex].index].z = total - count;  // higher z value = less valuable
-        indices.erase(indices.begin() + minIndex);
-        count++;
+        
+        if (tri->next != NULL){
+            tri->next->prev = tri->prev;
+            tri->next->indices[0] = tri->indices[0];  // check!
+            
+            
+            tri->next->area = triArea(      lineToSimplify[tri->next->indices[0]],
+                                            lineToSimplify[tri->next->indices[1]],
+                                            lineToSimplify[tri->next->indices[2]]);
+  
+
+        }
+        
+        trianglesVec.erase(trianglesVec.begin());
+        
+        
+        
     }
+    
+    // free the memory we just allocated above.
+    for (int i = 0; i < nTriangles; i++){
+        delete triangles[i];
+    }
+
     
     
 }
@@ -70,6 +127,9 @@ void testApp::calcSimplificaiton( ofPolyline & lineToSimplify, vector < ofPoint 
 //--------------------------------------------------------------
 void testApp::setup(){
 
+    
+    
+   
 }
 
 //--------------------------------------------------------------
